@@ -4,16 +4,32 @@
 
 **AI-powered synthetic healthcare data generator** that transforms natural language patient descriptions into standards-compliant FHIR, C-CDA, and HL7v2 messages.
 
-*Tabula* — Latin for "tablet" or "slate" — evokes the blank canvas on which compelling patient stories are crafted. Like a tabula rasa, each generation starts fresh, shaped entirely by your narrative.
+*Tabula*, Latin for "tablet" or "slate", evokes the blank canvas on which compelling patient stories are crafted. Like a tabula rasa, each generation starts fresh, shaped entirely by your narrative.
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20App-blue?style=for-the-badge)](https://v0-tabula-health.vercel.app)
 [![Built with Next.js](https://img.shields.io/badge/Built%20with-Next.js%2014-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
 
 ---
 
+## Table of Contents
+
+- [Why Not Just Use Synthea?](#why-not-just-use-synthea)
+- [The Problem](#the-problem)
+- [The Solution](#the-solution)
+- [Why I Built This](#why-i-built-this)
+- [Technical Highlights](#technical-highlights)
+- [Key Product Decisions](#key-product-decisions)
+- [Architecture](#architecture)
+- [Demo Video](#demo-video)
+- [What I Learned](#what-i-learned)
+- [Links](#links)
+- [Tech Stack](#tech-stack)
+
+---
+
 ## Why Not Just Use Synthea?
 
-[Synthea](https://github.com/synthetichealth/synthea) is the gold standard for bulk synthetic patient generation — it simulates entire populations from birth to death using rule-based modules. It's excellent for what it does.
+While [Synthea](https://github.com/synthetichealth/synthea) is the gold standard for bulk synthetic patient generation, it simulates entire populations from birth to death using rule-based modules. It's excellent for creating population scale synthetic data.
 
 But there's a gap:
 
@@ -27,7 +43,7 @@ But there's a gap:
 
 **Synthea is a population simulator. Tabula Health Generator is a scenario fulfillment tool for medical records.**
 
-They're complementary: use Synthea when you need volume and statistical realism across a population, use Tabula Health when you need a specific patient story on demand.
+They're complementary: use Synthea when you need volume and statistical realism across a population. Use Tabula Health when you need a specific patient story on demand, without handcrafting interop files, manually creating test patients in an EHR, or stitching together a cohesive set of conditions yourself.
 
 ---
 
@@ -52,7 +68,7 @@ Describe a patient in plain English. Get back clinically coherent, properly code
 - C-CDA 2.1 Continuity of Care Document
 - HL7v2 ADT messages
 
-All with real terminology codes (ICD-10, SNOMED CT, LOINC, RxNorm) and synthetic data watermarks for safe testing.
+All with real terminology codes (ICD-10, SNOMED CT, LOINC, RxNorm) and synthetic data watermarks for safe testing, aligned with the patient story.
 
 <!-- TODO: Add screenshot or GIF here -->
 ![Tabula Health Generator Demo](images/demo-placeholder.png)
@@ -107,7 +123,7 @@ This architecture lets each component do what it's best at: LLMs excel at unders
 
 ### Multi-Format Output Generation
 Single AI-generated persona produces consistent data across three healthcare standards:
-- **FHIR R4** — Modern REST-based standard that the digital health ecosystem is in the process of adopting. 
+- **FHIR R4** — Modern REST-based standard increasingly adopted across the digital health ecosystem 
 - **C-CDA 2.1** — Document-based exchange standard
 - **HL7v2** — Legacy messaging standard still used in 90%+ of US hospitals
 
