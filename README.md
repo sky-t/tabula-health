@@ -20,6 +20,8 @@
 - [Technical Highlights](#technical-highlights)
 - [Key Product Decisions](#key-product-decisions)
 - [Architecture](#architecture)
+- [AI Evaluation & Quality](#ai-evaluation--quality)
+- [Building in Public](#building-in-public)
 - [Demo Video](#demo-video)
 - [What I Learned](#what-i-learned)
 - [Links](#links)
@@ -184,6 +186,55 @@ GPT-4 generates personas with internally consistent:
 
 ---
 
+## AI Evaluation & Quality
+
+Shipping the generator was step one. The harder question: **how do you know the output is actually good?**
+
+The generation pipeline has one non-deterministic step (LLM persona generation) and two deterministic steps (terminology enrichment, format generation). These require different evaluation strategies:
+
+| Layer | Nature | Eval method |
+|-------|--------|-------------|
+| **Persona generation** (LLM) | Non-deterministic, subjective quality | Manual trace annotation → scoped binary judges |
+| **Terminology enrichment** | Deterministic lookup | Automated tests with fixed inputs and expected outputs |
+| **Format generators** (FHIR/C-CDA/HL7v2) | Deterministic transformation | Automated tests — known-good persona in, valid output asserted |
+
+Format validity and terminology accuracy are deterministic and testable with traditional automated tests. Clinical coherence — does this patient record make medical sense as a whole? — is the hard problem, and the one that requires human judgment to define before it can be automated.
+
+### Approach
+
+Following the methodology in Husain & Shankar's [AI Evals FAQ](https://hamel.dev/blog/posts/evals/) (2025): **start with error analysis, not infrastructure.** Build evaluation criteria from observed failures, not hypothesized ones. The manual annotation effort is scoped to the LLM-generated persona — that's where non-determinism lives and where human judgment is actually needed.
+
+### Evaluation Roadmap
+
+| Step | Activity | Output |
+|------|----------|--------|
+| 1 | Generate 100+ persona traces across clinical scenarios | Trace dataset for annotation |
+| 2 | Build trace annotation viewer | Structured review tool with pass/fail verdicts and notes |
+| 3 | Manual error analysis (open coding) | Free-text annotations on each persona — what's clinically wrong |
+| 4 | Build failure taxonomy (axial coding) | Categorized failure modes with frequency counts |
+| 5 | Build scoped binary evaluators per failure mode | Automated judges that answer "does this persona have [specific problem X]?" |
+| 6 | Validate judges against human labels | True positive / true negative rates per evaluator |
+| 7 | Use findings to improve generators, re-run evals | Close the loop — fix, measure, iterate |
+
+With the eval framework in place, I can also bring in early beta testers and capture their real-world prompts as test cases — moving beyond curated scenarios to the messy inputs the tool will actually see.
+
+**Eval framework spec:** [docs/EVAL_FRAMEWORK.md](docs/EVAL_FRAMEWORK.md)
+
+---
+
+## Building in Public
+
+I'm sharing the evaluation and quality improvement process openly as I work through it. Not just polished results, but the annotated traces, error taxonomies, and iteration cycles where I'm building intuition about what "clinically coherent synthetic data" actually means in practice.
+
+**What I'll be publishing:**
+
+- **Annotated trace analysis** — Manual review of LLM-generated patient personas with structured annotations: pass/fail verdicts and free-text clinical coherence notes
+- **Error taxonomy** — Failure modes categorized by frequency, classified as specification failures (fix the prompt) vs. generalization failures (build an evaluator)
+- **Eval iteration logs** — How scores change as I fix generators and refine evaluators, including what didn't work
+
+
+---
+
 ## Demo Video
 
 <!-- TODO: Embed 2-minute walkthrough video -->
@@ -197,11 +248,17 @@ GPT-4 generates personas with internally consistent:
 - Structured output from LLMs requires careful prompt engineering and validation layers
 - "AI-generated" doesn't mean "no rules" — constraints improve quality
 - Graceful degradation (local fallbacks when APIs fail) is essential for reliability
+- Evaluation is a product problem, not just an engineering one — defining "good" requires domain judgment before you can automate measurement
 
 **On healthcare interoperability:**
 - Standards exist but implementations vary wildly
 - Terminology mapping is harder than it looks (SNOMED ↔ ICD-10 isn't 1:1)
 - Watermarking synthetic data is a solved problem with clear best practices
+
+**On AI evaluation:**
+- Automated format/code validation is the easy part — clinical coherence judgment is the hard part
+- Manual error analysis on real traces builds intuition that no amount of prompt engineering replaces
+- The right eval criteria come from observed failures, not from guessing what might go wrong
 
 ---
 
@@ -210,6 +267,7 @@ GPT-4 generates personas with internally consistent:
 - **Live Demo:** [v0-tabula-health.vercel.app](https://v0-tabula-health.vercel.app)
 - **Product Plan:** [Detailed decisions and roadmap](docs/PRODUCT_PLAN.md)
 - **Original PRD:** [MVP requirements document](docs/PRD.md)
+- **Eval Framework:** [AI evaluation design and roadmap](docs/EVAL_FRAMEWORK.md)
 
 ---
 
