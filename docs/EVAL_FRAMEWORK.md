@@ -15,8 +15,15 @@ lib/eval/
 ├── validators/
 │   ├── index.ts
 │   ├── fhir-validator.ts       # FHIR R4 JSON validation
+│   ├── fhir-validator-cli.ts   # HL7 FHIR Validator JAR wrapper (US Core)
 │   ├── ccda-validator.ts       # C-CDA XML validation
 │   ├── hl7v2-validator.ts      # HL7v2 structure validation
+│   ├── identifier-validator.ts # OID, NPI, UUID, URI validation
+│   ├── datetime-validator.ts   # DateTime/timezone validation
+│   ├── valueset-validator.ts   # Value set bindings validation
+│   ├── ucum-validator.ts       # UCUM unit validation + normalizeUcumUnit()
+│   ├── plausibility-validator.ts # Clinical value plausibility
+│   ├── ccda-site-validator.ts # ONC SITE C-CDA conformance (--conformance)
 │   └── terminology-validator.ts # Code system validation
 ├── judges/
 │   ├── index.ts
@@ -31,10 +38,31 @@ lib/eval/
 └── reporters/
     ├── index.ts
     ├── console-reporter.ts
-    └── json-reporter.ts
+    ├── json-reporter.ts
+    └── trace-reporter.ts       # Full traces with persona + content
 
 scripts/
 └── run-eval.ts                 # CLI entry point
+
+lib/traces/
+└── production-trace.ts         # Vercel Blob trace persistence (save, list, get)
+
+app/api/traces/
+├── route.ts                    # GET list + POST enrich
+└── [traceId]/
+    └── route.ts                # GET single + PATCH annotations/feedback
+
+tools/
+└── trace-viewer/               # Shiny for Python annotation tool
+    ├── app.py                  # Supports local + blob trace sources
+    ├── requirements.txt
+    └── README.md
+
+eval-data/                      # Local prompt files (gitignored)
+└── prompts/                    # CSV files for bulk trace generation
+
+eval-results/                   # Generated artifacts (gitignored)
+└── traces/                     # Full trace JSON files (local eval traces)
 ```
 
 ---
@@ -83,9 +111,9 @@ Overall = (Format × 0.25) + (Terminology × 0.25) + (Clinical × 0.50)
 **Files:** `lib/eval/types.ts`, `lib/eval/validators/*.ts`
 
 - `EvaluationResult`, `Score`, `CheckResult` types
-- FHIR validator: JSON parse, Bundle structure, resource checks, watermarks
-- C-CDA validator: XML structure, template IDs, sections, watermarks
-- HL7v2 validator: Segment presence, field separators, watermarks
+- FHIR validator: JSON parse, Bundle structure, resource checks, US Core profile validation (async, requires Java), watermarks
+- C-CDA validator: `fast-xml-parser` for XML validation, DOM traversal for template IDs/sections, watermarks
+- HL7v2 validator: `hl7v2` library for parsing, segment/field validation, data type validation (CX, XPN, CWE, XAD, XTN), watermarks
 - Terminology validator: Leverages `lib/terminology/` for ICD-10, RxNorm, LOINC, SNOMED validation
 
 ### Phase 2: LLM-as-Judge
@@ -137,6 +165,7 @@ Each test case includes:
 **Reporters:**
 - Console: Colorized CLI output with progress
 - JSON: Structured output for CI/artifacts (saved to `./eval-results/`)
+- Trace: Full traces with persona + content for manual annotation (saved to `./eval-results/traces/`)
 
 ### Phase 5: CLI Integration
 
@@ -152,27 +181,43 @@ pnpm eval --category diabetes_management
 # Evaluate single prompt
 pnpm eval --prompt "Create a 45-year-old with heart failure"
 
+# Evaluate single prompt and save trace
+pnpm eval --prompt "Create a 45-year-old with heart failure" --save-traces
+
+# Bulk evaluation from CSV file
+pnpm eval --prompts-file eval-data/prompts/my-prompts.csv --save-traces
+
+# Generate traces for full test suite
+pnpm eval:traces
+
 # Options
 pnpm eval --help
   --batch, -b              Run full test suite
   --category, -c <name>    Run category subset
   --prompt, -p <text>      Single evaluation
+  --prompts-file, -P <file> Bulk evaluation from CSV (one prompt per line)
   --formats, -f <list>     Comma-separated (default: fhir,ccda,hl7v2)
   --verbose, -v            Detailed output
   --output, -o <dir>       JSON output directory
+  --save-traces, -t        Save full trace files with persona + content
+  --no-judge               Skip LLM-as-judge clinical evaluation (saves API calls)
+  --conformance            Enable external conformance validation (FHIR Validator JAR, ONC SITE C-CDA API)
 ```
 
 ---
 
 ## Key Dependencies
 
-| Purpose              | File                          |
+| Purpose              | File / Package                |
 |----------------------|-------------------------------|
 | Existing validation  | `lib/generators/index.ts`     |
 | Terminology service  | `lib/terminology/index.ts`    |
 | OpenAI pattern       | `app/api/plan-persona/route.ts` |
 | Core types           | `lib/types.ts`                |
 | Persona enrichment   | `lib/generators/enrich-persona.ts` |
+| XML parsing (C-CDA)  | `fast-xml-parser` (npm)       |
+| HL7v2 parsing        | `hl7v2` (npm)                 |
+| Production traces    | `lib/traces/production-trace.ts`, `@vercel/blob` (npm) |
 
 ---
 
@@ -181,8 +226,9 @@ pnpm eval --help
 Required in `.env.local`:
 
 ```
-OPENAI_API_KEY=sk-...      # For LLM-as-judge clinical evaluation
-UMLS_API_KEY=...           # Optional: For SNOMED code validation
+OPENAI_API_KEY=sk-...        # For LLM-as-judge clinical evaluation
+UMLS_API_KEY=...             # Optional: For SNOMED code validation
+BLOB_READ_WRITE_TOKEN=...   # Required for production trace storage (Vercel Blob)
 ```
 
 ---
@@ -249,98 +295,344 @@ The current validators perform structural checks sufficient for development and 
 
 | Aspect | FHIR | HL7v2 | C-CDA | Terminology |
 |--------|------|-------|-------|-------------|
-| Parsing | JSON structural | Regex/string split | Heuristic tag counting | N/A |
-| Data type validation | None | None | None | N/A |
-| Cardinality enforcement | Minimal | None | None | N/A |
-| Value set binding | None | Sex only | None | Partial |
-| Identifier format validation | None | None | None | N/A |
-| Date/time timezone handling | None | Basic regex | None | N/A |
-| Profile/IG conformance | None | None | None | N/A |
+| Parsing | JSON structural | ✅ `hl7v2` library | ✅ `fast-xml-parser` | N/A |
+| Data type validation | None | ✅ CX, XPN, CWE, XAD, XTN | None | N/A |
+| Cardinality enforcement | ✅ US Core (requires Java) | None | None | N/A |
+| Value set binding | ✅ Gender, status, severity, etc. | ✅ Sex, class, interpretation, route | ✅ Gender, marital, status | Partial |
+| Identifier format validation | ✅ OID, URI, system | ✅ OID, NPI, assigning authority | ✅ OID (root attrs) | N/A |
+| Date/time timezone handling | ✅ instant/dateTime, periods | ✅ DTM fields, timezone enforcement | ✅ effectiveTime, birthTime | N/A |
+| UCUM unit validation | ✅ Observation valueQuantity, referenceRange, component | ✅ OBX-6 units | ✅ PQ value units | N/A |
+| Clinical value plausibility | ✅ Observation values, BP consistency | ✅ OBX values, age-specific | ✅ PQ values, LOINC context | N/A |
+| Profile/IG conformance | ✅ US Core 6.1.0 (requires Java) | None | None | N/A |
 
-### Priority 1: Replace Heuristic Parsing With Real Parsers
+### Priority 1: Replace Heuristic Parsing With Real Parsers ✅ COMPLETED
 
-The single most impactful change. Current validators use regex and string matching instead of proper parsers, which means malformed output can pass validation.
+Upgraded validators to use proper parsing libraries instead of regex/string matching. Malformed output that previously passed validation is now caught.
 
-- **C-CDA**: Use a real XML parser (e.g., `fast-xml-parser` or `libxmljs2`) instead of heuristic tag counting
-- **FHIR**: Integrate the official FHIR Validator or use a JSON Schema for FHIR R4 resources for profile-level conformance
-- **HL7v2**: Use an HL7v2 parser library (e.g., `hl7js` or `node-hl7-complete`) that understands segment/field/component/subcomponent hierarchy
+**Implementation (Feb 2026):**
 
-### Priority 2: Add HL7v2 Data Type Validation
+| Format | Library | Changes |
+|--------|---------|---------|
+| C-CDA | `fast-xml-parser` | `XMLValidator.validate()` for syntax checking, `XMLParser` for DOM traversal |
+| HL7v2 | `hl7v2` | `HL7Message.parse()` for structured parsing, proper field/component access |
+| FHIR | `JSON.parse()` (unchanged) | Already adequate; schema validation deferred to Priority 4 |
 
-HL7v2 fields have structured data types that are completely unvalidated. Interface engines (Rhapsody, Mirth Connect) will reject messages with malformed fields before they reach the EHR.
+**Key improvements:**
+- C-CDA: Malformed XML (unclosed tags, invalid syntax) now fails with specific line/column error location
+- HL7v2: Escaped delimiters handled correctly, proper 1-based field indexing per HL7v2 spec
+- Both: Parse once at top, pass structured data to sub-validators (more efficient)
 
-| Data Type | Structure | Used In |
-|-----------|-----------|---------|
-| CX (Composite ID) | `ID^^^AssigningAuthority^^^IDType` | PID-3 (Patient Identifier) |
-| XPN (Person Name) | `Family^Given^Middle^Prefix^Suffix^Degree` | PID-5 (Patient Name) |
-| CWE (Coded With Exceptions) | `Code^Text^CodingSystem^AltCode^AltText^AltSystem` | OBX-3, OBR-4 (Codes) |
-| XAD (Address) | `Street^Other^City^State^Zip^Country` | PID-11 (Address) |
-| XTN (Telephone) | `PhoneNumber^TelecomUseCode^...` | PID-13 (Phone) |
+### Priority 2: Add HL7v2 Data Type Validation ✅ COMPLETED
 
-### Priority 3: Enforce Value Set Bindings
+HL7v2 fields have structured data types that interface engines (Rhapsody, Mirth Connect) validate before messages reach the EHR. The `hl7v2` library's component access APIs enable proper validation.
 
-Enterprise systems validate coded fields against specific value sets. Currently only PID-8 (sex) is validated. Required value sets:
+**Implementation (Feb 2026):**
 
-- Administrative gender (FHIR: `http://hl7.org/fhir/ValueSet/administrative-gender`)
-- Marital status, race/ethnicity (required for US Realm / Meaningful Use)
-- Encounter type, discharge disposition
-- Problem status (active, inactive, resolved)
-- Medication route (PO, IV, IM, etc.)
-- Allergy severity/criticality
-- Result interpretation codes (H, L, N, A for OBX-8 in HL7v2)
+| Data Type | Location | Components Validated |
+|-----------|----------|---------------------|
+| CX (Composite ID) | PID-3 | ID (required), Assigning Authority (required), ID Type Code (recommended) |
+| XPN (Person Name) | PID-5 | Family Name, Given Name (at least one required), Name Type Code |
+| XAD (Address) | PID-11 | Street, City, State (2-letter), Zip (US format), Address Type |
+| XTN (Telephone) | PID-13 | Phone (deprecated vs structured format), Use Code, Equipment Type |
+| CWE (Coded) | OBX-3, OBR-4 | Identifier + Coding System (required together), known coding system validation |
 
-Consider using the VSAC (Value Set Authority Center) API or embedding required value sets.
+**Validation features:**
+- Component-level validation using `field.getValue(componentPos)`
+- Known value validation (ID types, name types, address types, phone use codes, coding systems)
+- Severity-appropriate findings (major for required, minor for recommended, info for best practices)
+- Actionable suggestions for each issue
 
-### Priority 4: Add US Core Profile Validation (FHIR)
+**Example output:**
+```
+data_types: PASSED (score: 67)
+Findings:
+  [major] PID-3: CX.4 (Assigning Authority) is required for patient matching
+  [major] OBX[1]-3: CWE.3 (Coding System) required when CWE.1 (Identifier) is present
+  [minor] PID-5: XPN.2 (Given Name) is missing
+  [info] PID-11: XAD.7 (Address Type) not specified
+```
 
-Most US EHRs require US Core Implementation Guide compliance. The FHIR validator currently does not check:
+### Priority 3: Enforce Value Set Bindings ✅ COMPLETED
 
+Enterprise systems validate coded fields against specific value sets.
+
+**Implementation (Feb 2026):**
+
+Created `lib/eval/validators/valueset-validator.ts` with embedded value sets and validation functions, integrated into all three format validators.
+
+**Value Sets Implemented:**
+
+| Category | Value Set | Source |
+|----------|-----------|--------|
+| Gender | Administrative Gender | FHIR ValueSet, HL7 Table 0001 |
+| Marital Status | Marital Status | HL7 Table 0002 |
+| Race/Ethnicity | OMB Race/Ethnicity | CDC/OMB categories |
+| Condition Status | Clinical/Verification Status | FHIR ValueSet |
+| Medication Status | MedicationRequest Status | FHIR ValueSet |
+| Medication Route | Route codes | SNOMED CT, HL7 Table 0162 |
+| Allergy | Clinical status, criticality, severity | FHIR ValueSet |
+| Encounter | Status, class | FHIR ValueSet, ActEncounterCode |
+| Observation | Status, interpretation | FHIR ValueSet, HL7 Table 0078 |
+| Result Status | OBX-11 status codes | HL7 Table 0085 |
+| Patient Class | PV1-2 codes | HL7 Table 0004 |
+| Discharge Disposition | PV1-36 codes | HL7 Table 0112 |
+
+**Integration by format:**
+
+| Format | Fields Validated |
+|--------|------------------|
+| FHIR | Patient.gender, maritalStatus; Condition clinicalStatus/verificationStatus; MedicationRequest.status; AllergyIntolerance status/criticality/severity; Encounter status/class; Observation status/interpretation |
+| HL7v2 | PID-8 (sex), PV1-2 (patient class), OBX-8 (interpretation), OBX-11 (result status), RXR-1 (route) |
+| C-CDA | administrativeGenderCode, maritalStatusCode, statusCode (entries), encounter codes, severity observations |
+
+**Example output:**
+```
+valuesets: PASSED (score: 85)
+Findings:
+  [major] Patient.gender: Invalid code 'X'. Valid values: male, female, other, unknown
+  [major] OBX[1]-8: Invalid code 'AB'. Valid values: N, A, AA, H, HH, L, LL...
+  [minor] Condition[0].clinicalStatus: Invalid code 'current'. Valid values: active, recurrence, relapse, inactive, remission, resolved
+```
+
+### Priority 4: Add US Core Profile Validation (FHIR) ✅ COMPLETED
+
+Most US EHRs require US Core Implementation Guide compliance.
+
+**Implementation (Feb 2026):**
+
+Wrapped the official HL7 FHIR Validator JAR (v6.2.6) as a CLI tool for comprehensive US Core validation.
+
+**Files added:**
+- `lib/eval/validators/fhir-validator-cli.ts` - JAR download, caching, execution, output parsing
+
+**Features:**
+- Automatic JAR download and caching to `~/.fhir-validator-cache/`
+- Validates against US Core IG 6.1.0
+- Graceful fallback when Java is unavailable (informational finding, validation continues)
+- `skipUSCore` option to bypass US Core validation when not needed
+- Parses validator output into structured findings with severity levels
+
+**Checks performed (when Java 11+ available):**
 - Must Support elements
 - Required value set bindings (e.g., Patient.gender)
 - Extensions for race, ethnicity, birth sex
 - Resource reference resolution patterns
+- Full FHIR R4 structural conformance
 
-The official HL7 FHIR Validator JAR can be wrapped as a CLI call for full US Core conformance checking.
+**Usage:**
+```typescript
+// With US Core validation (default)
+const results = await validateFHIRBundle(content)
 
-### Priority 5: Validate Identifiers
+// Skip US Core validation
+const results = await validateFHIRBundle(content, { skipUSCore: true })
+
+// Check validator status
+import { getValidatorStatus } from './lib/eval/validators/fhir-validator'
+const status = getValidatorStatus()
+// { javaAvailable: true, validatorCached: true, validatorVersion: '6.2.6', cachePath: '...' }
+```
+
+**Note:** The `validateFHIRBundle` function is now async to support the validator subprocess.
+
+### Priority 5: Validate Identifiers ✅ COMPLETED
 
 EHRs and HIEs route and match patients based on identifiers. Invalid identifiers cause duplicate records or failed matches.
 
-- **OID syntax** validation (e.g., `2.16.840.1.113883.x.x.x`)
-- **NPI** format (10-digit with Luhn check digit)
-- **MRN** patterns per facility conventions
-- **Assigning Authority** OIDs must be properly formed
+**Implementation (Feb 2026):**
 
-### Priority 6: Date/Time Timezone Enforcement
+Created `lib/eval/validators/identifier-validator.ts` with comprehensive identifier validation utilities, integrated into all three format validators.
 
-Missing or incorrect timezones cause real ingestion failures.
+**Validation functions:**
 
-- **FHIR**: `instant` type requires timezone offset; `dateTime` has variable precision rules
-- **HL7v2**: Timestamps should include `+/-ZZZZ` offset (e.g., `20240115120000-0500`)
-- **C-CDA**: `effectiveTime` requires precision appropriate to context
+| Function | Purpose | Key Checks |
+|----------|---------|------------|
+| `validateOID()` | OID syntax validation | First arc 0-2, second arc rules (0-39 when first is 0-1), no leading zeros, proper dot separation |
+| `validateNPI()` | NPI format validation | 10 digits, first digit 1-2, Luhn check digit with 80840 prefix |
+| `validateUUID()` | UUID format validation | 36 chars, proper hyphenation, version digit, variant bits |
+| `validateURI()` | URI format validation | Scheme required, validates OID portion for `urn:oid:` URIs |
+| `validateFHIRIdentifiers()` | FHIR Patient identifiers | System URI format, value presence |
+| `validateHL7v2AssigningAuthority()` | HL7v2 CX data type | Assigning authority OID, ID type codes, NPI validation when type=NPI |
+| `validateCCDARoot()` | C-CDA root attributes | OID format, known root identification |
 
-### Priority 7: Validate C-CDA Entry-Level Content
+**Helper utilities:**
+- `generateNPICheckDigit()` - Generate valid NPI from 9-digit prefix (for synthetic data)
+- `identifyOIDRoot()` - Identify known OID namespaces (HL7, ISO US, Enterprise, Synthetic)
+- `KNOWN_OID_ROOTS` - Registry of common healthcare OID roots
 
-The current C-CDA validator only checks section presence. Enterprise CDRs validate deeper:
+**Integration by format:**
 
-- Entry templates (e.g., Problem Observation `2.16.840.1.113883.10.20.22.4.4`)
-- Required Act/Observation structure within each section
-- StatusCode elements (completed, active, etc.)
-- EffectiveTime with proper precision
-- Narrative-to-entry consistency
+| Format | Fields Validated |
+|--------|------------------|
+| FHIR | Patient.identifier (system URI, value), meta.profile URIs |
+| HL7v2 | PID-3 (Patient ID), PV1-19 (Visit Number), ORC-12 (Ordering Provider), OBR-16 (Provider) |
+| C-CDA | Document templateId roots, section templateId roots, all `root=""` attributes |
 
-### Priority 8: UCUM Unit Validation for Lab Results
+**Example output:**
+```
+identifiers: PASSED (score: 85)
+Findings:
+  [major] PID-3: Assigning authority OID invalid - OID first arc must be 0, 1, or 2
+  [minor] Patient.identifier[0].system: URI must contain a scheme (e.g., http:, urn:, oid:)
+  [info] PID-3: Assigning authority uses non-standard OID root
+```
 
-Lab results with non-standard units get rejected or misinterpreted. The terminology validator checks unit presence but not validity. Validate against UCUM using `@lhncbc/ucum-lhc`.
+### Priority 6: Date/Time Timezone Enforcement ✅ COMPLETED
 
-### Priority 9: Clinical Value Plausibility Checks
+Missing or incorrect timezones cause real ingestion failures in enterprise systems.
 
-Beyond range validity (min < max), check physiological plausibility:
+**Implementation (Feb 2026):**
 
-- Glucose: 0-2000 mg/dL
-- Heart rate: 0-300 bpm
-- Blood pressure: systolic > diastolic
-- Age-appropriate lab reference ranges
+Created `lib/eval/validators/datetime-validator.ts` with comprehensive datetime validation, integrated into all three format validators.
+
+**Validation functions:**
+
+| Function | Purpose | Key Checks |
+|----------|---------|------------|
+| `validateFHIRDateTime()` | FHIR dateTime validation | Precision levels (year/month/day/time/instant), timezone requirement |
+| `validateFHIRInstant()` | FHIR instant validation | Requires full precision with timezone (Z or +/-HH:MM) |
+| `validateHL7v2DateTime()` | HL7v2 DTM validation | YYYYMMDDHHMMSS format, +/-ZZZZ timezone |
+| `validateCCDADateTime()` | C-CDA effectiveTime | HL7v2 format with minimum precision enforcement |
+| `validateFHIRResourceDateTimes()` | Bulk FHIR validation | Validates all datetime fields in a resource |
+| `validateHL7v2SegmentDateTime()` | Segment field validation | Context-aware timezone requirements |
+
+**Helper utilities:**
+- `isFutureDate()` - Detect future dates (potential data quality issue)
+- `isUnreasonablyOld()` - Detect dates before 1900
+
+**Integration by format:**
+
+| Format | Fields Validated | Timezone Required |
+|--------|------------------|-------------------|
+| FHIR | instant fields (issued, sent, received, recorded, lastUpdated), dateTime fields (birthDate, effectiveDateTime, etc.), period.start/end | instant: yes, dateTime with time: recommended |
+| HL7v2 | MSH-7, PID-7 (DOB), PID-29 (death), PV1-44/45 (admit/discharge), OBR-7/22, OBX-14 | Clinical events: yes, DOB: no |
+| C-CDA | Document effectiveTime, birthTime, entry effectiveTime, low/high ranges | Document & clinical events: yes, birthTime: no |
+
+**Example output:**
+```
+datetimes: PASSED (score: 85)
+Findings:
+  [major] MSH-7: Timezone offset required (use +/-ZZZZ format, e.g., -0500)
+  [minor] Patient.effectiveDateTime: Time without timezone may cause interpretation issues
+  [minor] OBX[1]-14: Timezone recommended for clinical timestamps
+```
+
+### Priority 7: Validate C-CDA Entry-Level Content ✅ COMPLETED
+
+The C-CDA generator was rewritten for full ONC SITE validator conformance (Feb 2026).
+
+**Implementation:**
+
+Rewrote `lib/generators/ccda-generator.tsx` to produce CCD documents that pass the ONC SITE validator with 0 errors. Changes include dual R1.1/R2.1 templateIds on all entries, proper Act/Observation structure within each section, statusCode elements, effectiveTime with timezone precision, and three new required sections (Allergies, Social History, Vital Signs). Empty sections use `nullFlavor="NI"` to avoid XML Schema violations.
+
+**Validation results:**
+- ONC SITE validator: 0 errors (down from 43), 35 warnings (SHOULD-level), ~100 info (MAY-level)
+- Eval suite C-CDA format scores: 96-99 across all test cases
+
+### Priority 8: UCUM Unit Validation for Lab Results ✅ COMPLETED
+
+Lab results with non-standard units get rejected or misinterpreted by EHRs.
+
+**Implementation (Feb 2026):**
+
+Created `lib/eval/validators/ucum-validator.ts` using the `@lhncbc/ucum-lhc` library from the National Library of Medicine for UCUM (Unified Code for Units of Measure) validation.
+
+**Validation functions:**
+
+| Function | Purpose | Key Checks |
+|----------|---------|------------|
+| `validateUcumUnit()` | Async unit validation | Uses UCUM library, returns validity and suggestions |
+| `validateUcumUnitSync()` | Sync validation with fallback | Pattern-based validation when library not loaded |
+| `validateFHIRObservationUnits()` | FHIR Observation resources | valueQuantity.unit/code, referenceRange units, component units |
+| `validateHL7v2ObservationUnits()` | HL7v2 OBX-6 | CE/CWE data type unit code (first component) |
+| `validateCCDAObservationUnits()` | C-CDA observation values | PQ value/@unit attributes |
+| `preloadUcumLibrary()` | Library initialization | Pre-load for better performance |
+
+**Key features:**
+- Lazy-loads the UCUM library on first use
+- Provides correction suggestions for common errors (e.g., `mg/dl` → `mg/dL`, `mmHg` → `mm[Hg]`)
+- Pattern-based fallback validation for common units when library unavailable
+- Case-sensitive validation (UCUM is case-sensitive)
+- `normalizeUcumUnit()` exported for upstream use in `enrichLab()` — fixes units before they reach generators, so all three formats benefit without generator changes
+
+**Common unit corrections:**
+- Case errors: `mg/dl` → `mg/dL`, `mmol/l` → `mmol/L`, `meq/l` → `mEq/L`
+- Human-readable → UCUM: `bpm` → `/min`, `°C` → `Cel`, `mmHg` → `mm[Hg]`
+- Unit names → codes: `inches` → `[in_i]`, `pounds` → `[lb_av]`, `hours` → `h`
+
+**Integration by format:**
+
+| Format | Fields Validated |
+|--------|------------------|
+| FHIR | Observation.valueQuantity.unit/code, referenceRange[].low/high.unit, component[].valueQuantity.unit |
+| HL7v2 | OBX-6 (Units) - first component of CE/CWE data type |
+| C-CDA | `<value xsi:type="PQ" unit="..."/>`, `<low unit="..."/>`, `<high unit="..."/>` |
+
+**Example output:**
+```
+units: PASSED (score: 85)
+Findings:
+  [major] Observation[0].valueQuantity.unit: Invalid UCUM unit: 'mg/dl'
+          Suggestion: Use 'mg/dL' instead of 'mg/dl' (UCUM is case-sensitive)
+  [major] OBX[1]-6: Invalid UCUM unit: 'mmHg'
+          Suggestion: Use 'mm[Hg]' instead of 'mmHg'
+  [minor] referenceRange: Unit not in common list, may need verification
+```
+
+### Priority 9: Clinical Value Plausibility Checks ✅ COMPLETED
+
+Beyond range validity (min < max), validates that clinical values are within physiologically possible ranges.
+
+**Implementation (Feb 2026):**
+
+Created `lib/eval/validators/plausibility-validator.ts` with comprehensive clinical value plausibility checks based on medical reference ranges.
+
+**Validation functions:**
+
+| Function | Purpose | Key Checks |
+|----------|---------|------------|
+| `checkValuePlausibility()` | Single value check | Physiological limits, critical values, age-specific ranges |
+| `checkBloodPressureConsistency()` | BP component check | Systolic > diastolic, pulse pressure validation |
+| `validateFHIRObservationPlausibility()` | FHIR Observation | valueQuantity, components (BP), referenceRange consistency |
+| `validateHL7v2ObservationPlausibility()` | HL7v2 OBX segments | OBX-5 value against OBX-3 identifier |
+| `validateCCDAObservationPlausibility()` | C-CDA observations | PQ value elements with LOINC code context |
+
+**Clinical values covered (40+ parameters):**
+
+| Category | Parameters |
+|----------|------------|
+| Vital Signs | Heart rate, blood pressure (systolic/diastolic), respiratory rate, temperature, SpO2, weight, height, BMI |
+| Glucose/Diabetes | Blood glucose, HbA1c |
+| Renal Function | Creatinine, BUN, eGFR |
+| Electrolytes | Sodium, potassium, chloride, bicarbonate, calcium, magnesium, phosphorus |
+| Hematology | Hemoglobin, hematocrit, WBC, platelets |
+| Liver Function | ALT, AST, alkaline phosphatase, bilirubin, albumin |
+| Lipids | Total cholesterol, LDL, HDL, triglycerides |
+| Thyroid | TSH, free T4 |
+| Cardiac | Troponin, BNP, NT-proBNP |
+| Coagulation | PT, INR, aPTT |
+
+**Key features:**
+- LOINC code matching for precise parameter identification
+- Alternate name matching (e.g., "glucose", "blood sugar", "fasting glucose")
+- Age-specific ranges (pediatric vs adult heart rate, weight, etc.)
+- Critical value thresholds (separate from physiological limits)
+- Blood pressure consistency (systolic must exceed diastolic, pulse pressure checks)
+- Reference range validation (low must be less than high)
+
+**Severity levels:**
+- `critical`: Value outside physiologically possible range (data error)
+- `major`: Value in critical range (clinically concerning but possible)
+- `minor`: Value unusual but within possible range
+
+**Example output:**
+```
+plausibility: PASSED (score: 77)
+Findings:
+  [critical] Observation[0].valueQuantity: Heart Rate value 350 is outside physiologically possible range (20-300 /min)
+  [major] Observation[1].valueQuantity: Blood Glucose value 650 is critically high (> 600 mg/dL)
+  [major] Observation[2].component: Systolic (110) must be greater than diastolic (120) blood pressure
+```
 
 ### Priority 10: Cross-Format Consistency Validation
 
@@ -351,15 +643,18 @@ When generating the same patient across FHIR, HL7v2, and C-CDA, validate that:
 - Identifiers are consistent
 - Timestamps align
 
-### Suggested Libraries
+### Libraries In Use
 
-| Purpose | Library | Notes |
-|---------|---------|-------|
-| XML parsing (C-CDA) | `fast-xml-parser` or `libxmljs2` | Replace heuristic tag counting |
-| HL7v2 parsing | `hl7js` or `node-hl7-complete` | Full data type support |
-| FHIR validation | HL7 FHIR Validator JAR (CLI wrapper) | US Core conformance |
-| UCUM units | `@lhncbc/ucum-lhc` | Lab result unit validation |
-| Value sets | VSAC API | Authoritative US value sets |
+| Purpose | Library | Status |
+|---------|---------|--------|
+| XML parsing (C-CDA) | `fast-xml-parser` | ✅ Implemented (Priority 1) |
+| HL7v2 parsing | `hl7v2` | ✅ Implemented (Priority 1) |
+| FHIR validation | HL7 FHIR Validator JAR v6.2.6 (CLI wrapper) | ✅ Implemented (Priority 4) |
+| Identifier validation | Custom (OID, NPI, UUID, URI) | ✅ Implemented (Priority 5) |
+| DateTime validation | Custom (FHIR/HL7v2/C-CDA formats, timezone) | ✅ Implemented (Priority 6) |
+| Value set validation | Custom (embedded HL7/FHIR value sets) | ✅ Implemented (Priority 3) |
+| UCUM units | `@lhncbc/ucum-lhc` | ✅ Implemented (Priority 8) |
+| Clinical plausibility | Custom (40+ clinical parameters) | ✅ Implemented (Priority 9) |
 
 ---
 
@@ -429,7 +724,7 @@ Annotations are saved to `eval-results/annotations.json` as an array of records:
 - **`failureMode` starts null.** During open coding (Step 3), you write free-text notes. During axial coding (Step 4), you group notes into categories and backfill `failureMode`. This two-pass approach prevents premature categorization.
 - **`reviewPass` supports iteration.** After axial coding, you'll re-review traces with new failure modes in mind. The pass number tracks which cycle produced each annotation.
 
-### Step 1 (Detailed): Generate Trace Dataset
+### Step 1 (Detailed): Generate Trace Dataset ✅ IMPLEMENTED
 
 Run the eval suite across all 12 test cases to generate personas. Supplement with 15-20 custom prompts covering edge cases for a total of ~100 traces. Each trace captures one persona — the unit of manual annotation — not one per output format.
 
@@ -437,50 +732,120 @@ Each trace includes:
 
 - The input prompt (e.g., "45-year-old male with Type 2 diabetes and CKD")
 - The generated persona (demographics, conditions, medications, labs, encounters)
-- Automated format/terminology scores (for reference, not the focus of annotation)
+- Generated outputs for each format (FHIR, C-CDA, HL7v2) with full content preserved
+- Automated format/terminology/clinical scores and findings
+- Timing information (persona generation, total)
 
 Save all traces to `eval-results/traces/` as JSON for reproducibility.
 
 ```bash
-# Generate trace dataset
-pnpm eval:batch --output eval-results/traces --verbose
+# Generate traces for full test suite
+pnpm eval:traces
+
+# Generate trace for single prompt
+pnpm eval --prompt "45-year-old male with Type 2 diabetes" --save-traces
+
+# Bulk generation from CSV file
+pnpm eval --prompts-file eval-data/prompts/my-prompts.csv --save-traces
 ```
+
+**Trace File Format (eval traces):**
+```json
+{
+  "traceId": "eval-2026-02-04-abc123",
+  "timestamp": "2026-02-04T14:30:00Z",
+  "prompt": "Create a 58-year-old Hispanic male with type 2 diabetes...",
+  "testCaseId": "diabetes-001",
+  "persona": { /* full Persona object */ },
+  "outputs": {
+    "fhir": { "content": "...", "scores": {...}, "findings": [...] },
+    "ccda": { "content": "...", "scores": {...}, "findings": [...] },
+    "hl7v2": { "content": "...", "scores": {...}, "findings": [...] }
+  },
+  "aggregateScores": { "format": 100, "terminology": 100, "clinical": 64, "overall": 82 },
+  "timing": { "personaGeneration": 6482, "total": 18647 }
+}
+```
+
+**Production Trace Format (Vercel Blob):**
+
+Production traces use the `ProductionTrace` type (`lib/traces/production-trace.ts`) which extends the eval trace with:
+- `source: 'production' | 'eval'` — distinguishes origin
+- `annotations: Annotation[]` — array supporting multiple reviewers (each with `reviewerId`, `qualityRating`, `commonIssues`, `notes`, `annotatedAt`)
+- `feedback?: { rating: 'up' | 'down', timestamp }` — user thumbs up/down
+- `outputs` may lack `scores` and `findings` (no automated evaluation in production)
+
+Production traces are saved to Vercel Blob at `traces/trace-{traceId}.json`. They can be viewed in the trace viewer with `TRACE_SOURCE=blob` or fetched via the `/api/traces` endpoints.
 
 #### Portfolio Deliverables from Step 1
 
 - Trace dataset in `eval-results/traces/`
 - Devlog entry documenting trace generation approach and prompt coverage
 
-### Step 2 (Detailed): Build Custom Trace Viewer
+### Step 2 (Detailed): Build Custom Trace Viewer ✅ IMPLEMENTED
 
 Build the trace viewer **before** starting manual review. Per Husain/Shankar, custom annotation tools are "the single most impactful investment" for eval workflows, and teams with custom tools iterate ~10x faster. Reviewing 100+ traces in raw JSON is unsustainable — the viewer makes the difference between abandoning the process and completing it.
 
-#### Minimum Viable Viewer
+#### Implementation: Shiny for Python
 
-- **Main panel:** Rendered persona (demographics, conditions with codes, medications with codes, labs with ranges, encounters) — this is the primary review target
-- **Reference panel:** Generated output available for inspection when needed (syntax-highlighted JSON for FHIR, formatted XML for C-CDA, segment-parsed view for HL7v2) — useful for spotting persona issues that only become visible in the rendered output, but not the annotation focus
-- **Bottom bar:** Pass/Fail buttons, free-text notes field, `severityTag` selector
-- **Progress:** "Trace 23 of 100" with completion percentage
-- **Keyboard shortcuts:** `N` next, `P` previous, `1` pass, `2` fail, `S` save
-- **Persistence:** Annotations auto-save to `eval-results/annotations.json` on every verdict
+Built as a standalone Shiny for Python app in `tools/trace-viewer/` rather than a Next.js page. This follows Hamel Husain's recommendation of lightweight Python frameworks (Shiny, Gradio, Streamlit) for rapid iteration on annotation tools.
 
-#### Not in V1
+```bash
+# Setup
+cd tools/trace-viewer
+pip install -r requirements.txt
 
-- Clustering, filtering, or search (add after you have enough annotated data)
-- Auto-evaluator results displayed alongside traces (add in Step 5)
-- `failureMode` dropdown (not needed until axial coding in Step 4)
-- Multi-reviewer support (single reviewer is fine for initial pass)
+# Run
+shiny run app.py
+# Opens at http://localhost:8000
+```
 
-#### Implementation Notes
+#### Features (Three-Panel Layout)
 
-- Build as a Next.js page within the existing app (reuse existing UI components)
-- Load traces from `eval-results/traces/` via API route
-- Write annotations to `eval-results/annotations.json` via API route
-- Keep it minimal — only add features that earn their complexity
+**Left Sidebar (Navigation):**
+- Trace selector dropdown with score preview and annotation indicator (`+`)
+- Min score filter slider
+- Severity filter checkboxes
+- Quick info panel showing scores and annotation status
+
+**Center Panel (Content):**
+- Prompt always visible at top
+- Tabbed navigation: Overview, Persona, Outputs, Findings
+- Overview: aggregate scores, metadata, timing
+- Persona: demographics, conditions, medications, labs, encounters
+- Outputs: sub-tabs for FHIR/C-CDA/HL7v2 with per-format scores and syntax-highlighted content
+- Findings: filterable list sorted by severity
+
+**Right Sidebar (Annotations - Always Visible):**
+- Quality rating (1-5 scale)
+- Common issues checkboxes (missing meds, irrelevant labs, terminology error, etc.)
+- Free-text notes field
+- Save button — writes annotations directly to trace JSON file
+
+The split-panel layout keeps annotations visible while browsing content, eliminating context switching.
+
+#### Annotation Storage
+
+Annotations are saved directly into each trace JSON file (not a separate annotations.json):
+
+```json
+{
+  "traceId": "eval-2026-02-04-abc123",
+  "annotations": {
+    "quality_rating": "good",
+    "common_issues": ["missing_meds"],
+    "notes": "LLM didn't prescribe antihistamines for allergies",
+    "annotated_at": "2026-02-04T15:30:00"
+  },
+  ...
+}
+```
+
+This simplifies the workflow — each trace is self-contained with its annotation.
 
 #### Portfolio Deliverables from Step 2
 
-- The trace viewer itself (visible in the app)
+- The trace viewer itself (`tools/trace-viewer/`)
 - Devlog entry showing the viewer and explaining design decisions
 
 ### Step 3 (Detailed): Error Analysis (Open Coding)
