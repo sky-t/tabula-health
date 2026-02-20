@@ -208,10 +208,10 @@ Following the methodology in Husain & Shankar's [AI Evals FAQ](https://hamel.dev
 
 | Step | Activity | Output |
 |------|----------|--------|
-| 1 | Generate 100+ persona traces across clinical scenarios | Trace dataset for annotation |
-| 2 | Build trace annotation viewer | Structured review tool with pass/fail verdicts and notes |
-| 3 | Manual error analysis (open coding) | Free-text annotations on each persona — what's clinically wrong |
-| 4 | Build failure taxonomy (axial coding) | Categorized failure modes with frequency counts |
+| ✅ 1 | Generate persona traces across clinical scenarios | Trace dataset for annotation |
+| ✅ 2 | Build trace annotation viewer | Structured review tool with pass/fail verdicts and notes |
+| ✅ 3 | Manual error analysis (open coding) | Free-text annotations on each persona — what's clinically wrong |
+| ✅ 4 | Build failure taxonomy (axial coding) | [14 failure modes, spec vs. generalization classification →](docs/ERROR_ANALYSIS.md) |
 | 5 | Build scoped binary evaluators per failure mode | Automated judges that answer "does this persona have [specific problem X]?" |
 | 6 | Validate judges against human labels | True positive / true negative rates per evaluator |
 | 7 | Use findings to improve generators, re-run evals | Close the loop — fix, measure, iterate |
@@ -226,11 +226,14 @@ With the eval framework in place, I can also bring in early beta testers and cap
 
 I'm sharing the evaluation and quality improvement process openly as I work through it. Not just polished results, but the annotated traces, error taxonomies, and iteration cycles where I'm building intuition about what "clinically coherent synthetic data" actually means in practice.
 
-**What I'll be publishing:**
+**Published so far:**
 
-- **Annotated trace analysis** — Manual review of LLM-generated patient personas with structured annotations: pass/fail verdicts and free-text clinical coherence notes
-- **Error taxonomy** — Failure modes categorized by frequency, classified as specification failures (fix the prompt) vs. generalization failures (build an evaluator)
-- **Eval iteration logs** — How scores change as I fix generators and refine evaluators, including what didn't work
+- **[Error taxonomy (Eval Cycle 1)](docs/ERROR_ANALYSIS.md)** — 14 failure modes from an initial annotation pass, each classified as a specification failure (fix the prompt) or generalization failure (build an automated evaluator). Includes the prompt fixes applied before the next annotation cycle.
+
+**Coming next:**
+
+- **Annotated trace analysis** — Expanded annotation set as the eval scales to more traces and a second review pass
+- **Eval iteration logs** — How failure rates change across cycles, including what didn't work
 
 
 ---
@@ -268,6 +271,7 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 - **Product Plan:** [Detailed decisions and roadmap](docs/PRODUCT_PLAN.md)
 - **Original PRD:** [MVP requirements document](docs/PRD.md)
 - **Eval Framework:** [AI evaluation design and roadmap](docs/EVAL_FRAMEWORK.md)
+- **Error Analysis:** [Eval cycle 1 — failure taxonomy and spec vs. generalization classification](docs/ERROR_ANALYSIS.md)
 
 ---
 
