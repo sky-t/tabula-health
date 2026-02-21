@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/logo.png" alt="Tabula Health" width="220" />
+</p>
+
 # Tabula Health Generator
 
 > Every health record begins with a human story.
