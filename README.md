@@ -76,9 +76,6 @@ Describe a patient in plain English. Get back clinically coherent, properly code
 
 All with real terminology codes (ICD-10, SNOMED CT, LOINC, RxNorm) and synthetic data watermarks for safe testing, aligned with the patient story.
 
-<!-- TODO: Add screenshot or GIF here -->
-![Tabula Health Generator Demo](images/demo-placeholder.png)
-
 ---
 
 ## Why I Built This
@@ -244,8 +241,7 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 
 ## Demo Video
 
-<!-- TODO: Embed 2-minute walkthrough video -->
-*Coming soon*
+[![Demo Video](https://cdn.loom.com/sessions/thumbnails/259ab536660d4301a020bb15d12ca46a-with-play.gif)](https://www.loom.com/share/259ab536660d4301a020bb15d12ca46a)
 
 ---
 
