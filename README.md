@@ -12,6 +12,7 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20App-blue?style=for-the-badge)](https://v0-tabula-health.vercel.app)
 [![Built with Next.js](https://img.shields.io/badge/Built%20with-Next.js%2014-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
+[![Demo Video](https://img.shields.io/badge/Demo%20Video-Watch%20on%20Loom-purple?style=for-the-badge&logo=loom)](https://www.loom.com/share/259ab536660d4301a020bb15d12ca46a)
 
 ---
 
@@ -241,7 +242,7 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 
 ## Demo Video
 
-[![Demo Video](https://cdn.loom.com/sessions/thumbnails/259ab536660d4301a020bb15d12ca46a-with-play.gif)](https://www.loom.com/share/259ab536660d4301a020bb15d12ca46a)
+[![Watch the demo](https://img.shields.io/badge/Watch%20Demo-Loom-purple?style=for-the-badge&logo=loom)](https://www.loom.com/share/259ab536660d4301a020bb15d12ca46a)
 
 ---
 
