@@ -50,15 +50,24 @@ An AI-powered generator that takes natural language patient stories and outputs 
 - [x] Deployed to Vercel with access code protection
 - [x] Landing page with story-first narrative
 
-### Remaining Tasks
+### Completed (since initial deploy)
+- [x] Demo video recorded and embedded in portfolio README
+- [x] Portfolio repo published as public case study
+- [x] Production trace pipeline (Vercel Blob)
+- [x] Shiny for Python trace annotation viewer (local)
+- [x] Eval cycle 1 — manual annotation, 14-failure-mode taxonomy
+- [x] Vitals support (FHIR, C-CDA, HL7v2)
+- [x] FHIR/C-CDA schema validation fixes (BP panel, OIDs, doseQuantity)
+- [x] Session durability (1-year cookie, 401 auto-recovery)
 
-| Task | Description | Status |
-|------|-------------|--------|
-| Demo video | Record 2-minute walkthrough | Pending |
-| Portfolio repo | Public case study for GitHub Pages | Blocked by demo video |
-| UX polish | Improve error states and loading indicators | Pending |
-| AI eval design | Document evaluation framework for quality | Pending |
-| AI eval implementation | Build test suite for quality measurement | Blocked by design |
+### Roadmap
+
+| Task | Description | Priority |
+|------|-------------|----------|
+| Eval cycle 2 | Collect beta tester prompts, run second annotation pass | High |
+| Host trace viewer | Deploy Shiny app (Posit Connect Cloud) for remote clinical reviewer access | High |
+| Automated judges | Build scoped binary evaluators per failure mode from taxonomy | Medium |
+| Clinical notes generator | SOAP note output tied to persona | Deferred — pending user research |
 
 ---
 
