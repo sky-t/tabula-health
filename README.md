@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/logo.png" alt="Tabula Health" width="500" />
+  <img src="images/tabula_transparent.png" alt="Tabula Health" width="500" />
 </p>
 
 # Tabula Health Generator
