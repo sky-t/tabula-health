@@ -206,17 +206,25 @@ Format validity and terminology accuracy are deterministic and testable with tra
 
 Following the methodology in Husain & Shankar's [AI Evals FAQ](https://hamel.dev/blog/posts/evals/) (2025): **start with error analysis, not infrastructure.** Build evaluation criteria from observed failures, not hypothesized ones. The manual annotation effort is scoped to the LLM-generated persona — that's where non-determinism lives and where human judgment is actually needed.
 
+A key principle from this methodology: classify every failure as either a **specification failure** (the prompt doesn't define correct behavior → fix the generator) or a **generalization failure** (the model has correct instructions but fails to apply them → build an automated evaluator). This distinction determines the right fix and prevents building evaluators for problems that a prompt change would eliminate — a common mistake in AI eval work.
+
+Quality controls operate at two layers:
+- **Deterministic validation** — A clinical plausibility validator catches physiologically impossible values (lab ranges, vital signs) with rule-based checks. No LLM judge needed for what is essentially a lookup problem.
+- **LLM-as-judge** — Reserved for failures that require clinical reasoning to evaluate: incomplete lab panels, diagnosis specificity, medication appropriateness. These can't be reduced to rules.
+
 ### Evaluation Roadmap
 
 | Step | Activity | Output |
 |------|----------|--------|
 | ✅ 1 | Generate persona traces across clinical scenarios | Trace dataset for annotation |
-| ✅ 2 | Build trace annotation viewer | Structured review tool with pass/fail verdicts and notes |
-| ✅ 3 | Manual error analysis (open coding) | Free-text annotations on each persona — what's clinically wrong |
-| ✅ 4 | Build failure taxonomy (axial coding) | [14 failure modes, spec vs. generalization classification →](docs/ERROR_ANALYSIS.md) |
-| 5 | Build scoped binary evaluators per failure mode | Automated judges that answer "does this persona have [specific problem X]?" |
-| 6 | Validate judges against human labels | True positive / true negative rates per evaluator |
-| 7 | Use findings to improve generators, re-run evals | Close the loop — fix, measure, iterate |
+| ✅ 2 | Build trace annotation viewer | Structured review tool with pass/fail verdicts and clinical notes |
+| ✅ 3 | Manual error analysis, round 1 — open coding (12 traces) | Free-text annotations on each persona |
+| ✅ 4 | Failure taxonomy, round 1 — axial coding | [14 failure modes, each classified as spec vs. generalization →](docs/ERROR_ANALYSIS.md) |
+| ✅ 5 | Scale annotation to 55 traces; rebuild taxonomy | [10 stable failure codes with frequency data →](docs/FAILURE_TAXONOMY.md) |
+| ✅ 6 | Implement spec fixes based on taxonomy | Prompt engineering (7 failure modes); deterministic plausibility validator (range errors) |
+| 7 | Re-annotate with updated prompt; measure improvement | Validate which failures were truly spec vs. generalization |
+| 8 | Build binary evaluators for residual generalization failures | Scoped LLM judges for failures that persist after spec fixes |
+| 9 | Validate judges against human labels | True positive / true negative rates per evaluator |
 
 With the eval framework in place, I can also bring in early beta testers and capture their real-world prompts as test cases — moving beyond curated scenarios to the messy inputs the tool will actually see.
 
@@ -230,12 +238,16 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 
 **Published so far:**
 
-- **[Error taxonomy (Eval Cycle 1)](docs/ERROR_ANALYSIS.md)** — 14 failure modes from an initial annotation pass, each classified as a specification failure (fix the prompt) or generalization failure (build an automated evaluator). Includes the prompt fixes applied before the next annotation cycle.
+- **[Failure taxonomy, round 1](docs/ERROR_ANALYSIS.md)** — 14 failure modes from an initial 12-trace annotation pass, each classified as specification failure (fix the prompt) or generalization failure (build an automated evaluator).
+
+- **[Failure taxonomy, round 2](docs/FAILURE_TAXONOMY.md)** — Scaled to 55 annotated traces. 10 stable failure codes with frequency data (e.g., `incomplete_labs` 58%, `diagnosis_error` 44%). Derived from empirical annotation, not hypothesized failure modes. Includes a saturation check: the taxonomy is considered stable when 20 consecutive new annotations produce no new category.
+
+- **Spec fixes implemented** — 7 of the 10 failure modes were specification failures addressable by prompt engineering: expanded condition→lab mapping table (8 new conditions including ED baseline, STI panels, liver disease); diagnosis accuracy rules (specificity modifiers, anti-premature-diagnosis, terminology substitutions); condition→procedure table; controlled substance medication guidance; classification rules (urinalysis ≠ procedure; PHQ-9 ≠ procedure). Deterministic plausibility validator extended to cover CBC components, iron studies, and B12 — the most frequently flagged `range_error` sub-patterns.
 
 **Coming next:**
 
-- **Annotated trace analysis** — Expanded annotation set as the eval scales to more traces and a second review pass
-- **Eval iteration logs** — How failure rates change across cycles, including what didn't work
+- **Re-annotation cycle** — Generate new traces with the updated prompt, annotate against the same 10 failure codes, measure whether spec fix failure rates dropped. This closes the loop and reveals which remaining failures are true generalization failures requiring automated evaluators.
+- **Binary evaluator development** — Scoped LLM judges for the residual generalization failures, validated against human-labeled ground truth.
 
 
 ---
