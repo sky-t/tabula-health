@@ -97,7 +97,7 @@ An AI-powered generator that takes natural language patient stories and outputs 
 │                    External APIs                             │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
 │  │ OpenAI      │  │ UMLS/NLM    │  │ RxNav               │  │
-│  │ GPT-4       │  │ (SNOMED,    │  │ (RxNorm)            │  │
+│  │ GPT-4o      │  │ (SNOMED,    │  │ (RxNorm)            │  │
 │  │             │  │  ICD-10)    │  │                     │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
