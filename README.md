@@ -2,17 +2,17 @@
   <img src="images/tabula_transparent.png" alt="Tabula Health" width="500" />
 </p>
 
-# Tabula Health Generator
+# Tabula Health
 
 > Every health record begins with a human story.
 
 **AI-powered synthetic healthcare data generator** that transforms natural language patient descriptions into standards-compliant FHIR, C-CDA, and HL7v2 messages.
 
-*Tabula*, Latin for "tablet" or "slate", evokes the blank canvas on which compelling patient stories are crafted. Like a tabula rasa, each generation starts fresh, shaped entirely by your narrative.
-
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20App-blue?style=for-the-badge)](https://v0-tabula-health.vercel.app)
 [![Built with Next.js](https://img.shields.io/badge/Built%20with-Next.js%2014-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
 [![Demo Video](https://img.shields.io/badge/Demo%20Video-Watch%20on%20Loom-purple?style=for-the-badge&logo=loom)](https://www.loom.com/share/259ab536660d4301a020bb15d12ca46a)
+
+> **For reviewers:** Natural language to FHIR R4 / C-CDA 2.1 / HL7v2. Key decision: the LLM extracts clinical intent, and terminology services assign the codes, so codes aren't hallucinated. Evals: 55 human-annotated traces, 10 failure codes with frequencies, spec fixes shipped for 7 failure modes. **Status (Sep 2026):** re-annotation to measure the impact of the fixes is next.
 
 ---
 
@@ -40,8 +40,8 @@ While [Synthea](https://github.com/synthetichealth/synthea) is the gold standard
 
 But there's a gap:
 
-| Need | Synthea | Tabula Health Generator |
-|------|---------|---------------------|
+| Need | Synthea | Tabula Health |
+|------|---------|---------------|
 | Generate 10,000 patients for load testing | ✅ Perfect | ❌ Overkill |
 | "I need a 45-year-old diabetic with recent chest pain" | ❌ Configure modules, filter output, hope for match | ✅ Describe it, get tailored records on demand |
 | Test a specific edge case scenario | ❌ May require custom module development | ✅ Describe the scenario in plain English |
@@ -83,15 +83,9 @@ All with real terminology codes (ICD-10, SNOMED CT, LOINC, RxNorm) and synthetic
 
 Synthea is great for bulk data, but I saw a gap: **no tool let you describe a specific patient scenario and get back standards-compliant test data in seconds.**
 
-QA engineers testing edge cases, developers debugging specific workflows, educators demonstrating clinical concepts — they all needed something more targeted than population simulation.
+QA engineers testing edge cases, developers debugging specific workflows, educators demonstrating clinical concepts: they all needed something more targeted than population simulation.
 
-This project demonstrates:
-
-1. **Healthcare domain expertise** — Understanding HL7 standards, clinical terminology systems, and the regulatory context around health data
-2. **AI product thinking** — Using LLMs not just as chat interfaces but as structured data generators with validation and quality controls
-3. **Shipping ability** — Taking a concept from PRD to deployed product with modern AI tooling (built with Vercel v0 + Claude)
-
-This is a portfolio piece showing how I approach AI product development in a complex, regulated domain.
+I built it with Vercel v0 + Claude, taking it from PRD to a deployed product. This is a portfolio piece showing how I approach AI product development in a complex, regulated domain.
 
 ---
 
@@ -121,22 +115,23 @@ LLMs hallucinate codes. They'll invent plausible-looking but invalid ICD-10 or R
 | **LLM (via function calling)** | Understands clinical context, normalizes terminology ("sugar problems" → "Type 2 diabetes mellitus"), structures narrative into conditions/meds/labs |
 | **Terminology Service** | Deterministic lookups against real databases (UMLS, RxNav) guarantee valid codes |
 
-**OpenAI Function Calling** constrains the LLM to return structured JSON via a schema (`emit_persona`), not prose. The LLM can't improvise—it must fill the defined fields with clinical facts extracted from your narrative.
+**OpenAI Function Calling** constrains the LLM to return structured JSON via a schema (`emit_persona`), not prose. The LLM can't improvise: it must fill the defined fields with clinical facts extracted from your narrative.
 
 This architecture lets each component do what it's best at: LLMs excel at understanding intent and normalizing language; lookup services guarantee correctness.
 
 ### Multi-Format Output Generation
 Single AI-generated persona produces consistent data across three healthcare standards:
-- **FHIR R4** — Modern REST-based standard increasingly adopted across the digital health ecosystem 
-- **C-CDA 2.1** — Document-based exchange standard
-- **HL7v2** — Legacy messaging standard still used in 90%+ of US hospitals
+- **FHIR R4**: Modern REST-based standard increasingly adopted across the digital health ecosystem 
+- **C-CDA 2.1**: Document-based exchange standard
+- **HL7v2**: Legacy messaging standard still used in the large majority of US hospitals
 
 ### Real Terminology Integration
-Not placeholder codes — actual terminology lookups via:
-- **UMLS API** — SNOMED CT and ICD-10 codes
-- **RxNav API** — RxNorm medication codes
-- **LOINC** — Lab observation codes
-- **Local fallback mappings** — Graceful degradation when APIs are unavailable
+Not placeholder codes. Real codes from a mix of local datasets and live APIs:
+- **ICD-10-CM**: Embedded dataset of ~300 common codes, with UMLS API fallback
+- **SNOMED CT**: UMLS API crosswalk from ICD-10, with local mappings
+- **RxNorm**: Live RxNav API lookups
+- **LOINC**: Embedded dataset of ~200 common lab and vital codes, with RxNav API fallback
+- **Graceful degradation**: Local mappings and datasets cover common cases when APIs are unavailable
 
 ### Synthetic Data Watermarking
 Multi-layer approach so synthetic data can never be confused with real PHI:
@@ -145,7 +140,7 @@ Multi-layer approach so synthetic data can never be confused with real PHI:
 - HL7v2: MSH-11 processing mode, synthetic assigning authority
 
 ### AI-Powered Clinical Coherence
-GPT-4 generates personas with internally consistent:
+GPT-4o generates personas with internally consistent:
 - Demographics and social context
 - Diagnoses appropriate for age/history
 - Medications matching conditions
@@ -158,7 +153,7 @@ GPT-4 generates personas with internally consistent:
 | Decision | Rationale |
 |----------|-----------|
 | **Story-first input** | Developers think "45-year-old with diabetes" not "ICD-10 E11.9". Meet users where they are. |
-| **Multiple output formats** | FHIR is modern, but 90% of US hospitals still use HL7v2. Support the real world. |
+| **Multiple output formats** | FHIR is modern, but the large majority of US hospitals still use HL7v2. Support the real world. |
 | **Real terminology codes** | Placeholder codes don't test real integrations. Valid codes are essential. |
 | **Mandatory watermarking** | Synthetic data mistaken for PHI is a compliance nightmare. Build safety in. |
 
@@ -182,7 +177,7 @@ GPT-4 generates personas with internally consistent:
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      External APIs                           │
-│     OpenAI GPT-4  ←→  UMLS/NLM  ←→  RxNav (RxNorm)         │
+│     OpenAI GPT-4o ←→  UMLS/NLM  ←→  RxNav (RxNorm)         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -262,17 +257,17 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 
 **On AI product development:**
 - Structured output from LLMs requires careful prompt engineering and validation layers
-- "AI-generated" doesn't mean "no rules" — constraints improve quality
+- "AI-generated" doesn't mean "no rules": constraints improve quality
 - Graceful degradation (local fallbacks when APIs fail) is essential for reliability
-- Evaluation is a product problem, not just an engineering one — defining "good" requires domain judgment before you can automate measurement
+- Evaluation is a product problem, not just an engineering one, because defining "good" requires domain judgment before you can automate measurement
 
 **On healthcare interoperability:**
 - Standards exist but implementations vary wildly
 - Terminology mapping is harder than it looks (SNOMED ↔ ICD-10 isn't 1:1)
-- Watermarking synthetic data is a solved problem with clear best practices
+- Watermarking synthetic data has well-established patterns
 
 **On AI evaluation:**
-- Automated format/code validation is the easy part — clinical coherence judgment is the hard part
+- Automated format/code validation is the easy part. Clinical coherence judgment is the hard part
 - Manual error analysis on real traces builds intuition that no amount of prompt engineering replaces
 - The right eval criteria come from observed failures, not from guessing what might go wrong
 
@@ -284,17 +279,20 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 - **Product Plan:** [Detailed decisions and roadmap](docs/PRODUCT_PLAN.md)
 - **Original PRD:** [MVP requirements document](docs/PRD.md)
 - **Eval Framework:** [AI evaluation design and roadmap](docs/EVAL_FRAMEWORK.md)
-- **Error Analysis:** [Eval cycle 1 — failure taxonomy and spec vs. generalization classification](docs/ERROR_ANALYSIS.md)
+- **Failure Taxonomy (round 2):** [Failure taxonomy, round 2: 55 traces, 10 failure codes with frequencies](docs/FAILURE_TAXONOMY.md)
+- **Error Analysis (round 1):** [Eval cycle 1: failure taxonomy and spec vs. generalization classification](docs/ERROR_ANALYSIS.md)
 
 ---
 
 ## Tech Stack
 
 - **Frontend:** Next.js 14, React, Tailwind CSS, shadcn/ui
-- **AI:** OpenAI GPT-4 for persona generation
-- **Terminology:** UMLS API (SNOMED CT, ICD-10), RxNav (RxNorm), LOINC
+- **AI:** OpenAI GPT-4o for persona generation
+- **Terminology:** UMLS API (SNOMED CT, ICD-10 fallback), RxNav (RxNorm), embedded datasets (ICD-10, LOINC)
 - **Deployment:** Vercel
 
 ---
 
-*Built by [Scott Tse](https://github.com/sky-t) as an AI product management portfolio piece.*
+*Tabula*, Latin for "tablet" or "slate", evokes the blank canvas on which compelling patient stories are crafted. Like a tabula rasa, each generation starts fresh, shaped entirely by your narrative.
+
+*Built by [Scott Tse](https://www.linkedin.com/in/pdx-scott-tse) as an AI product management portfolio piece.*
