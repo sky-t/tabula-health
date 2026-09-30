@@ -146,7 +146,7 @@ An AI-powered generator that takes natural language patient stories and outputs 
 
 ## Links
 
-- **Live Demo**: https://v0-tabula-health.vercel.app (access code required)
+- **Live Demo**: https://tabula-health.vercel.app/ (access code required)
 - **Vercel Project**: https://vercel.com/sky2tse-6641s-projects/v0-tabula-health
 
 ---

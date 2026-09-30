@@ -8,7 +8,7 @@
 
 **AI-powered synthetic healthcare data generator** that transforms natural language patient descriptions into standards-compliant FHIR, C-CDA, and HL7v2 messages.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20App-blue?style=for-the-badge)](https://v0-tabula-health.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Visit%20App-blue?style=for-the-badge)](https://tabula-health.vercel.app/)
 [![Built with Next.js](https://img.shields.io/badge/Built%20with-Next.js%2014-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
 [![Demo Video](https://img.shields.io/badge/Demo%20Video-Watch%20on%20Loom-purple?style=for-the-badge&logo=loom)](https://www.loom.com/share/259ab536660d4301a020bb15d12ca46a)
 
@@ -275,7 +275,7 @@ I'm sharing the evaluation and quality improvement process openly as I work thro
 
 ## Links
 
-- **Live Demo:** [v0-tabula-health.vercel.app](https://v0-tabula-health.vercel.app)
+- **Live Demo:** [tabula-health.vercel.app](https://tabula-health.vercel.app/)
 - **Product Plan:** [Detailed decisions and roadmap](docs/PRODUCT_PLAN.md)
 - **Original PRD:** [MVP requirements document](docs/PRD.md)
 - **Eval Framework:** [AI evaluation design and roadmap](docs/EVAL_FRAMEWORK.md)
